@@ -5,13 +5,51 @@ on:
     branches:
       - main
       - master
+  pull_request:
+
+permissions:
+  contents: write
 
 jobs:
   reapack:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: cfillion/reapack-index-action@v2
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
-          commit_message: "Auto-update ReaPack index"
+          fetch-depth: 0
+
+      - name: Install Pandoc
+        uses: pandoc/actions/setup@v1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: false
+
+      - name: Install reapack-index
+        run: gem install reapack-index
+
+      - name: Validate ReaPack packages
+        run: reapack-index --check
+
+      - name: Update index.xml
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: reapack-index --commit
+
+      - name: Commit updated index.xml
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- index.xml; then
+            echo "index.xml is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add index.xml
+          git commit -m "Update ReaPack index [skip ci]"
+          git push
