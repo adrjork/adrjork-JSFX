@@ -1,0 +1,17 @@
+name: ReaPack
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  reapack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cfillion/reapack-index@v2
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-update ReaPack index"
