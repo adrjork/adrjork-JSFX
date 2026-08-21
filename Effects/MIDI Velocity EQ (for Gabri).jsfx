@@ -1,8 +1,9 @@
 desc: MIDI Velocity EQ (for Gabri)
 
 /*
+@description MIDI Velocity EQ (for Gabri)
 @author Adriano Castaldini
-@version 0.26.08.22
+@version 0.26.08.20
 @about
   # MIDI Velocity EQ (for Gabri)
   A sort of MIDI EQ that selectively applies percentages of a custom velocity curve 
@@ -33,8 +34,6 @@ desc: MIDI Velocity EQ (for Gabri)
   *Copyright (c) 2026 Adriano Castaldini*
 
 @changelog
-  v0.26.08.22
-    + Fixed ReaPack metadata block.
   v0.26.08.20
     + Major UI upgrade: MIDI velocity spectrum analyzer with Realtime/Hold/Peak modes.
   v0.26.08.19
