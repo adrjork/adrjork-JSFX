@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" commit="5b83d47b64b33a16926447c7086a81a3a3e8c058" name="adrjork-JSFX">
+<index version="1" commit="4edb2e15a8f155ee4e41ed7c3ac969cae7a6a7b7" name="adrjork-JSFX">
   <category name="Effects">
     <reapack name="MIDI Velocity EQ (for Gabri).jsfx" type="effect" desc="MIDI Velocity EQ (for Gabri)">
       <metadata>
@@ -7,14 +7,14 @@
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 {\b MIDI Velocity EQ (for Gabri)}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 {\b MIDI VELOCITY EQ (FOR GABRI)}\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 A sort of MIDI EQ that selectively applies percentages of a custom velocity curve.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 {\i Dedicato a mia mamma Gabriella per il suo 83\u176 ? compleanno.}\par}
 {\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Developed through vibe-coding (AI-assisted).\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License MIT\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Copyright (c) 2026 Adriano Castaldini\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Links: Forum https://forum.cockos.com/showthread.php?t=310660 Video https://www.youtube.com/watch?v=6H16FIS6xws\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b Links:} Forum https://forum.cockos.com/showthread.php?t=310660 Video https://www.youtube.com/watch?v=6H16FIS6xws\par}
 }
 ]]></description>
       </metadata>
