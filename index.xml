@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" commit="46d75a255cc02b20c8b4ddab9439b2fcf4a6693a" name="adrjork-JSFX">
+<index version="1" commit="29d84c77b7342fb1184133464cd19535f037caea" name="adrjork-JSFX">
   <category name="Effects">
     <reapack name="MIDI Velocity EQ (for Gabri).jsfx" type="effect" desc="MIDI Velocity EQ (for Gabri)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 MIDI Velocity EQ (for Gabri)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 A sort of MIDI EQ that selectively applies percentages of a custom velocity curve. Developed through vibe-coding (AI-assisted).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Dedicato a mia mamma Gabriella per il suo 83 compleanno.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Links: Forum: https://forum.cockos.com/showthread.php?t=310660 Video: https://www.youtube.com/watch?v=6H16FIS6xws\par}
+}
+]]></description>
+      </metadata>
       <version name="0.26.08.20" author="Adriano Castaldini" time="2026-08-21T04:55:37Z">
         <changelog><![CDATA[v0.26.08.20
   + Major UI upgrade: MIDI velocity spectrum analyzer with Realtime/Hold/Peak modes.
