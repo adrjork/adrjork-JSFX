@@ -1,9 +1,11 @@
 desc: MIDI Velocity EQ (for Gabri)
 author: Adriano Castaldini
-version: 0.26.08.22
+version: 0.26.08.23
 changelog:
+  v0.26.08.23
+    + Minimal metadata refinements.
   v0.26.08.22
-    + Fixed changelog visibility in ReaPack install window. 
+    + Fixed changelog visibility in ReaPack install window.
   v0.26.08.21
     + Added About section and package metadata.
   v0.26.08.20
