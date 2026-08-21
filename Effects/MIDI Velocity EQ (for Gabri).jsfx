@@ -1,12 +1,12 @@
 desc: MIDI Velocity EQ (for Gabri)
 author: Adriano Castaldini
-version: 0.26.08.21
+version: 0.26.08.22
 about:
   # MIDI Velocity EQ (for Gabri)
   A sort of MIDI EQ that selectively applies percentages of a custom velocity curve.
   Developed through vibe-coding (AI-assisted).
   ---
-  Dedicato a mia mamma Gabriella per il suo 83 compleanno.
+  Dedicato a mia mamma Gabriella per il suo 83° compleanno.
   ---
   License: MIT
   Copyright (c) 2026 Adriano Castaldini
@@ -15,13 +15,13 @@ about:
   Forum: https://forum.cockos.com/showthread.php?t=310660
   Video: https://www.youtube.com/watch?v=6H16FIS6xws
 changelog:
-  v0.26.08.21
+  version 0.26.08.22
     + Fixed ReaPack metadata formatting.
-  v0.26.08.20
+  version 0.26.08.21
     + Major UI upgrade featuring MIDI velocity spectrum analyzer.
-  v0.26.08.19
+  version 0.26.08.19
     + Minimal GUI refinements.
-  v0.26.08.09
+  version 0.26.08.09
     + Beta release.
 
 
