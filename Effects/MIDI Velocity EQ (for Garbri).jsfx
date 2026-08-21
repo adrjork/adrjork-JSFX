@@ -1,7 +1,6 @@
 desc: MIDI Velocity EQ (for Gabri)
 author: Adriano Castaldini
 version: 0.26.08.20
-license: MIT
 
 about:
   # MIDI Velocity EQ (for Gabri)
