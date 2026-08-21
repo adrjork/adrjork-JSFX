@@ -36,15 +36,8 @@ jobs:
       - name: Validate ReaPack packages
         run: reapack-index --check
 
-      - name: Update index.xml
+      - name: Genera e chiudi l'index.xml nel pacco
         run: reapack-index --commit
 
-      - name: Commit updated index.xml
-        run: |
-          git add index.xml
-          if git diff --staged --quiet; then
-            echo "Nessuna modifica da salvare."
-            exit 0
-          fi
-          git commit -m "Update ReaPack index [skip ci]"
-          git push
+      - name: Spedisci il pacco al tuo GitHub!
+        run: git push
