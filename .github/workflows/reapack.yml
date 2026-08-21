@@ -19,9 +19,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Pandoc
-        uses: pandoc/actions/setup@v1
-
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -31,25 +28,23 @@ jobs:
       - name: Install reapack-index
         run: gem install reapack-index
 
-      - name: Validate ReaPack packages
-        run: reapack-index --check
-
       - name: Configura il nome del Robottino
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Validate ReaPack packages
+        run: reapack-index --check
+
       - name: Update index.xml
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: reapack-index --commit
 
       - name: Commit updated index.xml
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          if git diff --quiet -- index.xml; then
-            echo "index.xml is already up to date."
+          git add index.xml
+          if git diff --staged --quiet; then
+            echo "Nessuna modifica da salvare."
             exit 0
           fi
-          git add index.xml
           git commit -m "Update ReaPack index [skip ci]"
           git push
