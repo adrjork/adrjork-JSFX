@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" commit="0185e78d07d941952fafb6898c48abac9a02fcc4" name="adrjork-JSFX">
-  <category name=".github/workflows/Effects">
+<index version="1" commit="b4eda9509e0981ac43496b5229abec5c4800edb9" name="adrjork-JSFX">
+  <category name="Effects">
     <reapack name="MIDI Velocity EQ (for Garbri).jsfx" type="effect" desc="MIDI Velocity EQ (for Gabri)">
-      <version name="0.26.08.20" author="Adriano Castaldini" time="2026-08-21T00:08:34Z">
-        <source>https://github.com/adrjork/adrjork-JSFX/raw/0185e78d07d941952fafb6898c48abac9a02fcc4/.github/workflows/Effects/MIDI%20Velocity%20EQ%20(for%20Garbri).jsfx</source>
+      <version name="0.26.08.20" author="Adriano Castaldini" time="2026-08-21T04:29:48Z">
+        <source>https://github.com/adrjork/adrjork-JSFX/raw/b4eda9509e0981ac43496b5229abec5c4800edb9/Effects/MIDI%20Velocity%20EQ%20(for%20Garbri).jsfx</source>
       </version>
     </reapack>
   </category>
