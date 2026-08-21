@@ -1,38 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" commit="f784375e2dda33c3107d20fcd99a9df173390af9" name="adrjork-JSFX">
+<index version="1" commit="46d75a255cc02b20c8b4ddab9439b2fcf4a6693a" name="adrjork-JSFX">
   <category name="Effects">
     <reapack name="MIDI Velocity EQ (for Gabri).jsfx" type="effect" desc="MIDI Velocity EQ (for Gabri)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 MIDI Velocity EQ (for Gabri)\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 A sort of MIDI EQ that selectively applies percentages of a custom velocity curve to incoming notes, plus an Offset EQ that can be routed pre- or post-calculation. Developed through vibe-coding (AI-assisted). {\i Dedicato a mia mamma Gabriella per il suo 83\u176 ? compleanno}\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Mini-Guide\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Double-click grid:} Add custom point\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Single-click piano:} Add custom point\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Drag point:} Reposition freely\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Arrow keys:} Fine-tuning nudge\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Shift+drag:} Snap to grid\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Ctrl+drag:} Lock horizontal axis\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Alt+drag segment:} Adjust curvature\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Right-click point/curve:} Delete/Reset\sa180\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Links\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "https://forum.cockos.com/showthread.php?t=310660"}}{\fldrslt{\ul
-Forum Thread
-}}}
-\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\field{\*\fldinst{HYPERLINK "https://www.youtube.com/watch?v=6H16FIS6xws"}}{\fldrslt{\ul
-Video Guide
-}}}
-\sa180\par}
-{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 {\i License: MIT} {\i Copyright (c) 2026 Adriano Castaldini}\par}
-}
-]]></description>
-      </metadata>
       <version name="0.26.08.20" author="Adriano Castaldini" time="2026-08-21T04:55:37Z">
         <changelog><![CDATA[v0.26.08.20
   + Major UI upgrade: MIDI velocity spectrum analyzer with Realtime/Hold/Peak modes.
@@ -41,6 +10,9 @@ v0.26.08.19
 v0.26.08.09
   + Beta release.]]></changelog>
         <source>https://github.com/adrjork/adrjork-JSFX/raw/f784375e2dda33c3107d20fcd99a9df173390af9/Effects/MIDI%20Velocity%20EQ%20(for%20Gabri).jsfx</source>
+      </version>
+      <version name="0.26.08.21" author="Adriano Castaldini" time="2026-08-21T05:11:21Z">
+        <source>https://github.com/adrjork/adrjork-JSFX/raw/46d75a255cc02b20c8b4ddab9439b2fcf4a6693a/Effects/MIDI%20Velocity%20EQ%20(for%20Gabri).jsfx</source>
       </version>
     </reapack>
   </category>
