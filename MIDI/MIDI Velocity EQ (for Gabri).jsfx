@@ -1,0 +1,1161 @@
+desc: MIDI Velocity EQ (for Gabri)
+author: Adriano Castaldini
+version: 0.26.08.24
+changelog:
+  0.26.08.24
+    + Color feedback in velocity spectrum analyzer.
+    + UI refinements
+  0.26.08.23
+    + Metadata refinements.
+  0.26.08.22
+    + Changelog fixes.
+  0.26.08.21
+    + About section in metadata.
+  0.26.08.20
+    + MIDI velocity spectrum analyzer.
+  0.26.08.19
+    + UI refinements.
+  0.26.08.09
+    + Beta release.
+about:
+  **MIDI VELOCITY EQ (FOR GABRI)**
+  ---
+  A sort of MIDI EQ that selectively applies percentages of a custom velocity curve.
+  ---
+  *Dedicato a mia mamma Gabriella per il suo 83° compleanno.*
+  ---
+  ---
+  Developed through vibe-coding (AI-assisted).
+  ---
+  License MIT
+  ---
+  Copyright (c) 2026 Adriano Castaldini
+  ---
+  **Links:**
+   Forum https://forum.cockos.com/showthread.php?t=310660
+   Video https://www.youtube.com/watch?v=6H16FIS6xws
+
+
+in_pin:none
+out_pin:none
+
+slider1:0<0,1,1{Factory default,Modified}>State
+
+
+@init
+
+/* Memoria Graph 1: Velocity Mapping (1-127) */
+map_y = 1000; map_active = 1200; map_curve = 1400; map_bend = 1600;
+
+/* Memoria Graph 2: Note Dry/Wet (21-108) */
+dw_y = 2000; dw_active = 2200; dw_curve = 2400; dw_bend = 2600;
+
+/* Memoria Graph 2: Note Offset (21-108) */
+off_y = 4000; off_active = 4200; off_curve = 4400; off_bend = 4600;
+
+/* Memoria Precalcolo Tastiera e Frequenze */
+white_before = 3000; is_white_key = 3200; is_black_key = 3400; note_freq = 3600;
+
+/* --- NUOVA MEMORIA FEEDBACK VISUALIZER (Graph 2) --- */
+fb_out_vel = 5000; /* Memorizza la velocity in uscita per ogni nota (21-108) */
+fb_alpha = 5200;   /* Memorizza la trasparenza (0.0 - 1.0) per l'effetto fade/hold */
+fb_timer = 5400;   /* Un contatore per gestire il tempo di hold in secondi */
+
+/* --- MEMORIA FEEDBACK GRAPH 1 --- */
+fb1_alpha = 5600;  /* Trasparenza per le singole velocity in ingresso (1-127) */
+is_held = 5800;    /* Stato fisico del tasto (1 = premuto, 0 = rilasciato) */
+
+/* --- NUOVA MEMORIA COLORI DINAMICI (V24) --- */
+fb_modified = 6000;  /* Memorizza se la nota ha subito un cambio di velocity (21-108) */
+fb1_modified = 6200; /* Memorizza se la velocity in ingresso ha subito un cambio (1-127) */
+
+map_dirty = 1; dw_dirty = 1; off_dirty = 1;
+
+/* Variabili Mouse, Doppio Clic e Nudge */
+last_click_time = 0;
+active_graph = 0; drag_mode = 0; drag_point = -1; drag_segment_left = -1; drag_segment_right = -1;
+drag_start_x = 0; drag_start_y = 0; drag_start_left_value = 0; drag_start_right_value = 0; drag_start_bend = 0;
+last_mouse_cap = 0;
+selected_point = -1;
+selected_graph = 0; /* 1 = Map, 2 = DW, 3 = Offset */
+
+/* Variabili MIDI Log */
+log_n1 = -1; log_vi1 = 0; log_vo1 = 0;
+log_n2 = -1; log_vi2 = 0; log_vo2 = 0;
+
+state_version < 4 ?
+(
+  /* Toggles e Stati */
+  edit_mode = 0; routing_mode = 1;
+  view_mode = 0; /* 0: Realtime, 1-13: Hold Xs, 14: Peak */
+
+  /* Inizializza Velocity Mapping */
+  i = 1; while (i <= 127) ( map_y[i] = i; map_active[i] = 0; map_curve[i] = i; map_bend[i] = 0; i += 1; );
+  map_active[1] = 1; map_active[127] = 1; map_y[1] = 1; map_y[127] = 127;
+
+  /* Inizializza Dry/Wet */
+  i = 21; while (i <= 108) ( dw_y[i] = 100; dw_active[i] = 0; dw_curve[i] = 100; dw_bend[i] = 0; i += 1; );
+  dw_active[21] = 1; dw_active[108] = 1; dw_y[21] = 100; dw_y[108] = 100;
+
+  /* Inizializza Offset */
+  i = 21; while (i <= 108) ( off_y[i] = 0; off_active[i] = 0; off_curve[i] = 0; off_bend[i] = 0; i += 1; );
+  off_active[21] = 1; off_active[108] = 1; off_y[21] = 0; off_y[108] = 0;
+
+  state_version = 4;
+  map_dirty = 1; dw_dirty = 1; off_dirty = 1; drag_mode = 0;
+  selected_point = -1; selected_graph = 0;
+);
+
+/* Precalcolo Tastiera e Frequenze Hz all'avvio */
+white_count = 0; n = 21;
+while (n <= 108) (
+  white_before[n] = white_count; pitch_class = n % 12;
+  w_flag = (pitch_class == 0 || pitch_class == 2 || pitch_class == 4 || pitch_class == 5 || pitch_class == 7 || pitch_class == 9 || pitch_class == 11);
+  b_flag = (pitch_class == 1 || pitch_class == 3 || pitch_class == 6 || pitch_class == 8 || pitch_class == 10);
+  is_white_key[n] = w_flag; is_black_key[n] = b_flag;
+  w_flag ? (white_count += 1;);
+  
+  /* Calcolo sicuro della frequenza basato sul LA a 440Hz */
+  note_freq[n] = floor(440 * pow(2, (n - 69) / 12) + 0.5);
+  n += 1;
+);
+
+/* Funzioni di ricalcolo curve */
+function update_map_curves() local(i, left_point, right_point, exponent, k, ratio) (
+  map_dirty ? (
+    i = 1; while (i <= 127) (map_curve[i] = i; i += 1;);
+    left_point = -1; i = 1;
+    while (i <= 127) (
+      map_active[i] ? (
+        left_point >= 0 ? (
+          right_point = i; exponent = min(max(exp(map_bend[left_point] * 2), 0.135), 7.389); k = left_point;
+          while (k <= right_point) (
+            ratio = (k - left_point) / (right_point - left_point);
+            map_curve[k] = min(max(map_y[left_point] + (map_y[right_point] - map_y[left_point]) * pow(ratio, exponent), 1), 127);
+            k += 1;
+          );
+        );
+        left_point = i;
+      ); i += 1;
+    );
+    map_dirty = 0;
+  );
+);
+
+function update_dw_curves() local(i, left_point, right_point, exponent, k, ratio) (
+  dw_dirty ? (
+    i = 21; while (i <= 108) (dw_curve[i] = 100; i += 1;);
+    left_point = -1; i = 21;
+    while (i <= 108) (
+      dw_active[i] ? (
+        left_point >= 0 ? (
+          right_point = i; exponent = min(max(exp(dw_bend[left_point] * 2), 0.135), 7.389); k = left_point;
+          while (k <= right_point) (
+            ratio = (k - left_point) / (right_point - left_point);
+            dw_curve[k] = min(max(dw_y[left_point] + (dw_y[right_point] - dw_y[left_point]) * pow(ratio, exponent), -140), 140);
+            k += 1;
+          );
+        );
+        left_point = i;
+      ); i += 1;
+    );
+    dw_dirty = 0;
+  );
+);
+
+function update_off_curves() local(i, left_point, right_point, exponent, k, ratio) (
+  off_dirty ? (
+    i = 21; while (i <= 108) (off_curve[i] = 0; i += 1;);
+    left_point = -1; i = 21;
+    while (i <= 108) (
+      off_active[i] ? (
+        left_point >= 0 ? (
+          right_point = i; exponent = min(max(exp(off_bend[left_point] * 2), 0.135), 7.389); k = left_point;
+          while (k <= right_point) (
+            ratio = (k - left_point) / (right_point - left_point);
+            off_curve[k] = min(max(off_y[left_point] + (off_y[right_point] - off_y[left_point]) * pow(ratio, exponent), -126), 126);
+            k += 1;
+          );
+        );
+        left_point = i;
+      ); i += 1;
+    );
+    off_dirty = 0;
+  );
+);
+
+@slider
+slider1 == 0 ? (
+  view_mode = 0;
+  i = 1; while (i <= 127) ( map_y[i] = i; map_active[i] = 0; map_curve[i] = i; map_bend[i] = 0; i += 1; );
+  map_active[1] = 1; map_active[127] = 1; map_y[1] = 1; map_y[127] = 127;
+
+  i = 21; while (i <= 108) (
+    dw_y[i] = 100; dw_active[i] = 0; dw_curve[i] = 100; dw_bend[i] = 0;
+    off_y[i] = 0; off_active[i] = 0; off_curve[i] = 0; off_bend[i] = 0; i += 1;
+  );
+  dw_active[21] = 1; dw_active[108] = 1; dw_y[21] = 100; dw_y[108] = 100;
+  off_active[21] = 1; off_active[108] = 1; off_y[21] = 0; off_y[108] = 0;
+
+  state_version = 4;
+  map_dirty = 1; dw_dirty = 1; off_dirty = 1; drag_mode = 0;
+  selected_point = -1; selected_graph = 0;
+);
+
+
+/* ============================================================
+   ELABORAZIONE MIDI 
+   ============================================================ */
+
+@block
+map_dirty ? update_map_curves();
+dw_dirty ? update_dw_curves();
+off_dirty ? update_off_curves();
+
+/* Calcolo del decremento del timer in base alla dimensione del blocco (samples) */
+timer_decrement = samplesblock / srate;
+
+/* Aggiornamento dei timer di decadimento per il visualizzatore */
+b_i = 21; while (b_i <= 108) (
+  is_held[b_i] ? (
+    /* Tasto premuto: colonna solida, timer costantemente ricaricato */
+    fb_alpha[b_i] = 1.0;
+    view_mode > 0 && view_mode < 14 ? fb_timer[b_i] = view_mode; 
+  ) : (
+    /* Tasto rilasciato: gestisce il decadimento in base alla modalità */
+    fb_alpha[b_i] > 0 ? (
+      view_mode == 0 ? (
+        /* Realtime: fade-out rapido immediato */
+        fb_alpha[b_i] = max(fb_alpha[b_i] - 0.1, 0); 
+      ) : view_mode < 14 ? (
+        /* Hold: conta i secondi, poi esegue un fade-out morbido */
+        fb_timer[b_i] > 0 ? (
+          fb_timer[b_i] = max(fb_timer[b_i] - timer_decrement, 0);
+        ) : (
+          fb_alpha[b_i] = max(fb_alpha[b_i] - 0.02, 0); 
+        );
+      );
+      /* In Peak (14), non fa nulla: la colonna resta infinita */
+    );
+  );
+  b_i += 1;
+);
+
+/* Fade-out rapido e costante per il Graph 1 (Sempre Realtime) */
+b_i = 1; while (b_i <= 127) (
+  fb1_alpha[b_i] > 0 ? fb1_alpha[b_i] = max(fb1_alpha[b_i] - 0.05, 0);
+  b_i += 1;
+);
+
+while (midirecv(midioffset, msg1, msg23)) (
+  status = msg1 & 240; 
+  velocity = (msg23 >> 8) & 127; 
+  note = msg23 & 127;
+  
+  /* NOTE-ON */
+  status == 144 && velocity > 0 ? (
+    note >= 21 && note <= 108 ? (
+      wet_factor = dw_curve[note] / 100;
+      offset_val = off_curve[note];
+    ) : (
+      wet_factor = 1.0; 
+      offset_val = 0;
+    );
+    
+    routing_mode == 0 ? (
+      vel_in = velocity + offset_val;
+      vel_in = min(max(floor(vel_in + 0.5), 1), 127);
+      mapped_vel = map_curve[vel_in];
+      new_velocity = vel_in + (mapped_vel - vel_in) * wet_factor;
+    ) : (
+      mapped_vel = map_curve[velocity];
+      mapped_mixed = velocity + (mapped_vel - velocity) * wet_factor;
+      new_velocity = mapped_mixed + offset_val;
+    );
+    
+    new_velocity = floor(new_velocity + 0.5);
+    new_velocity = min(max(new_velocity, 1), 127);
+    msg23 = note | (new_velocity << 8);
+        
+    /* --- AGGIORNAMENTO FEEDBACK GRAPH 1 --- */
+    /* Calcoliamo qual è la vera input velocity in base al routing */
+    g1_in_vel = routing_mode == 0 ? vel_in : velocity;
+    g1_in_vel = min(max(floor(g1_in_vel + 0.5), 1), 127);
+    fb1_alpha[g1_in_vel] = 1.0;
+    fb1_modified[g1_in_vel] = (velocity != new_velocity) ? 1 : 0;
+    
+    /* --- AGGIORNAMENTO FEEDBACK VISUALIZER --- */
+    note >= 21 && note <= 108 ? (
+      is_held[note] = 1; /* Segnala che il tasto è fisicamente premuto */
+      /* In modalità Peak, aggiorniamo solo se la nuova velocity è maggiore */
+      (view_mode != 14) || (view_mode == 14 && new_velocity > fb_out_vel[note]) ? (
+        fb_out_vel[note] = new_velocity;
+        fb_modified[note] = (velocity != new_velocity) ? 1 : 0;
+      );
+    );
+
+    /* Aggiornamento memorie MIDI Log */
+    log_n2 = log_n1; log_vi2 = log_vi1; log_vo2 = log_vo1;
+    log_n1 = note; log_vi1 = velocity; log_vo1 = new_velocity;
+  );
+
+  /* NOTE-OFF */
+  (status == 128 || (status == 144 && velocity == 0)) ? (
+    note >= 21 && note <= 108 ? (
+      is_held[note] = 0; /* Segnala che il tasto è stato rilasciato */
+    );
+  );
+
+  midisend(midioffset, msg1, msg23);
+);
+
+
+/* ============================================================
+   GUI LAYOUT E RENDER 
+   ============================================================ */
+
+@gfx 1200 600
+char = gfx_getchar();
+
+/* --- CORREZIONE OTTICA MARGINE SINISTRO --- */
+/* Aumenta questo valore per spingere il "127" (e il Grafico 1) verso destra */
+tweak_left_margin = 4; 
+
+graph_top = 50; graph_bottom = 430; graph_h = graph_bottom - graph_top;
+g1_x = 40 + tweak_left_margin; g1_w = graph_h; bar_y = 475; bar_h = 70; 
+g2_x = g1_x + g1_w + 80; g2_w = gfx_w - g2_x - 38;
+keyboard_top = 475; keyboard_bottom = 545;
+
+btn_edit_x = g2_x; btn_edit_y = 12; btn_edit_w = 80; btn_edit_h = 24;
+btn_rout_x = btn_edit_x + btn_edit_w + 10; btn_rout_y = 12; btn_rout_w = 148; btn_rout_h = 24;
+
+/* --- VARIABILI VIEW MODE BUTTON --- */
+btn_view_w = 84; btn_view_h = 24;
+/* Lo posizioniamo 10 pixel a destra del bottone di Routing */
+btn_view_x = btn_rout_x + btn_rout_w + 10; 
+btn_view_y = btn_edit_y;
+
+new_left_click = (mouse_cap & 1) && !(last_mouse_cap & 1);
+new_right_click = (mouse_cap & 2) && !(last_mouse_cap & 2);
+
+/* Rilevamento Doppio Clic pulito */
+is_double_click = 0;
+new_left_click ? (
+  (time_precise() - last_click_time) < 0.25 ? ( 
+    is_double_click = 1; last_click_time = 0; 
+  ) : (
+    last_click_time = time_precise();
+  );
+);
+
+/* Click UI Toggles */
+new_left_click && mouse_y >= btn_edit_y && mouse_y <= btn_edit_y + btn_edit_h ? (
+  mouse_x >= btn_edit_x && mouse_x <= btn_edit_x + btn_edit_w ? ( edit_mode = 1 - edit_mode; slider1 = 1; selected_point = -1; );
+  mouse_x >= btn_rout_x && mouse_x <= btn_rout_x + btn_rout_w ? ( routing_mode = 1 - routing_mode; slider1 = 1; );
+  
+  /* Click View Mode (Ciclo Rapido) */
+  mouse_x >= btn_view_x && mouse_x <= btn_view_x + btn_view_w ? (
+    view_mode == 0 ? view_mode = 3
+    : view_mode < 14 ? view_mode = 14
+    : view_mode = 0;
+    slider1 = 1;
+    drag_mode = 3; 
+    drag_start_y = mouse_y;
+    drag_start_view_mode = view_mode;
+  );
+);
+
+/* Doppio Click View Mode (Azzeramento Peak) */
+is_double_click && view_mode == 14 && mouse_y >= btn_view_y && mouse_y <= btn_view_y + btn_view_h && mouse_x >= btn_view_x && mouse_x <= btn_view_x + btn_view_w ? (
+    i = 21; while (i <= 108) ( fb_out_vel[i] = 0; fb_alpha[i] = 0; i += 1; );
+);
+
+new_left_click || new_right_click || is_double_click ? (
+  mouse_x < (g1_x + g1_w + 40) ? active_graph = 1 : active_graph = 2;
+);
+
+
+/* ---------------- INPUT GRAPH 1 ---------------- */
+active_graph == 1 ? (
+  is_double_click && mouse_x >= g1_x && mouse_x <= g1_x + g1_w && mouse_y >= graph_top && mouse_y <= graph_bottom ? (
+    idx = 2 + floor(((mouse_x - g1_x) / g1_w) * 125 + 0.5); idx = min(max(idx, 2), 126);
+    !map_active[idx] ? ( 
+      map_active[idx] = 1; 
+      map_y[idx] = min(max(floor((graph_bottom - mouse_y) * 126 / graph_h + 1.5), 1), 127);
+      map_bend[idx] = 0; map_dirty = 1; slider1 = 1; 
+      drag_mode = 1; drag_point = idx;
+      selected_point = idx; selected_graph = 1;
+    );
+  );
+
+  new_left_click && mouse_y >= graph_top && mouse_y <= graph_bottom && !is_double_click ? (
+    hit = -1; i = 1; while (i <= 127) (
+      map_active[i] ? (
+        px = g1_x + ((i - 1) / 126) * g1_w; py = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+        abs(mouse_x - px) < 14 && abs(mouse_y - py) < 14 ? hit = i;
+      ); i += 1;
+    );
+    hit >= 0 ? ( drag_mode = 1; drag_point = hit; selected_point = hit; selected_graph = 1; ) : (
+      selected_point = -1;
+      segment_found = 0; prev = -1; i = 1; while (i <= 127) (
+        map_active[i] ? (
+          prev >= 0 ? (
+            sx1 = g1_x + ((prev - 1) / 126) * g1_w; sx2 = g1_x + ((i - 1) / 126) * g1_w;
+            sy1 = graph_bottom - ((map_y[prev] - 1) / 126) * graph_h; sy2 = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+            mouse_x >= sx1 && mouse_x <= sx2 ? (
+              sy = sy1 + (sy2 - sy1) * ((mouse_x - sx1) / (sx2 - sx1));
+              abs(mouse_y - sy) < 14 || (abs(mouse_x - (sx1+sx2)*0.5) < 28 && abs(mouse_y - ((sy1+sy2)*0.5 - 22)) < 16) ? (
+                segment_found = 1; drag_segment_left = prev; drag_segment_right = i;
+                drag_start_x = mouse_x; drag_start_y = mouse_y;
+                drag_start_left_value = map_y[prev]; drag_start_right_value = map_y[i]; drag_start_bend = map_bend[prev];
+              );
+            );
+          ); prev = i;
+        ); i += 1;
+      );
+      segment_found ? drag_mode = 2;
+    );
+  );
+
+  new_right_click && mouse_y >= graph_top && mouse_y <= graph_bottom ? (
+    hit = -1; i = 1; while (i <= 127) (
+      map_active[i] ? (
+        px = g1_x + ((i - 1) / 126) * g1_w; py = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+        abs(mouse_x - px) < 15 && abs(mouse_y - py) < 15 ? hit = i;
+      ); i += 1;
+    );
+    hit > 0 ? (
+      hit == 1 ? (map_y[1] = 1;) : hit == 127 ? (map_y[127] = 127;) : (map_active[hit] = 0; map_bend[hit] = 0;);
+      map_dirty = 1; slider1 = 1;
+      selected_point = -1;
+    ) : (
+      prev = -1; i = 1; while (i <= 127) (
+        map_active[i] ? (
+          prev >= 0 ? (
+            sx1 = g1_x + ((prev - 1) / 126) * g1_w; sx2 = g1_x + ((i - 1) / 126) * g1_w;
+            sy1 = graph_bottom - ((map_y[prev] - 1) / 126) * graph_h; sy2 = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+            mouse_x >= sx1 && mouse_x <= sx2 ? (
+              sy = sy1 + (sy2 - sy1) * ((mouse_x - sx1) / (sx2 - sx1));
+              label_hit = abs(mouse_x - (sx1+sx2)*0.5) < 28 && abs(mouse_y - ((sy1+sy2)*0.5 - 22)) < 16;
+              abs(mouse_y - sy) < 14 || label_hit ? ( map_bend[prev] = 0; map_dirty = 1; slider1 = 1; );
+            );
+          ); prev = i;
+        ); i += 1;
+      );
+    );
+  );
+);
+
+/* ---------------- INPUT GRAPH 2 ---------------- */
+active_graph == 2 ? (
+  
+  new_left_click && mouse_y >= keyboard_top && mouse_y <= keyboard_bottom && mouse_x >= g2_x && mouse_x <= g2_x + g2_w ? (
+    idx = floor(21 + ((mouse_x - g2_x) / g2_w) * 87 + 0.5); 
+    idx >= 22 && idx <= 107 ? (
+      edit_mode == 0 ? (
+        !dw_active[idx] ? ( dw_active[idx] = 1; dw_y[idx] = dw_curve[idx]; dw_bend[idx] = 0; dw_dirty = 1; slider1 = 1; );
+        selected_graph = 2;
+      ) : (
+        !off_active[idx] ? ( off_active[idx] = 1; off_y[idx] = off_curve[idx]; off_bend[idx] = 0; off_dirty = 1; slider1 = 1; );
+        selected_graph = 3;
+      );
+      selected_point = idx;
+    );
+  );
+
+  is_double_click && mouse_y >= graph_top && mouse_y <= graph_bottom && mouse_x >= g2_x && mouse_x <= g2_x + g2_w ? (
+    idx = floor(21 + ((mouse_x - g2_x) / g2_w) * 87 + 0.5); 
+    idx >= 22 && idx <= 107 ? (
+      edit_mode == 0 ? (
+        !dw_active[idx] ? ( 
+          dw_active[idx] = 1; 
+          dw_y[idx] = min(max(floor((graph_bottom - mouse_y) * 280 / graph_h - 140 + 0.5), -140), 140);
+          dw_bend[idx] = 0; dw_dirty = 1; slider1 = 1; 
+        );
+        selected_graph = 2;
+      ) : (
+        !off_active[idx] ? ( 
+          off_active[idx] = 1; 
+          off_y[idx] = min(max(floor((graph_bottom - mouse_y) * 252 / graph_h - 126 + 0.5), -126), 126);
+          off_bend[idx] = 0; off_dirty = 1; slider1 = 1; 
+        );
+        selected_graph = 3;
+      );
+      drag_mode = 1; drag_point = idx; selected_point = idx;
+    );
+  );
+
+  new_left_click && mouse_y >= graph_top && mouse_y <= graph_bottom && !is_double_click ? (
+    hit = -1; i = 21; while (i <= 108) (
+      edit_mode == 0 ? (
+        dw_active[i] ? (
+          px = g2_x + ((i - 21) / 87) * g2_w; py = graph_bottom - ((dw_y[i] + 140) / 280) * graph_h;
+          abs(mouse_x - px) < 14 && abs(mouse_y - py) < 14 ? hit = i;
+        );
+      ) : (
+        off_active[i] ? (
+          px = g2_x + ((i - 21) / 87) * g2_w; py = graph_bottom - ((off_y[i] + 126) / 252) * graph_h;
+          abs(mouse_x - px) < 14 && abs(mouse_y - py) < 14 ? hit = i;
+        );
+      ); i += 1;
+    );
+    
+    hit >= 0 ? ( drag_mode = 1; drag_point = hit; selected_point = hit; selected_graph = (edit_mode == 0 ? 2 : 3); ) : (
+      selected_point = -1; 
+      segment_found = 0; prev = -1; i = 21; while (i <= 108) (
+        edit_mode == 0 ? ( is_act = dw_active[i]; v_y = dw_y[i]; v_max = 140; rnge = 280; v_b = dw_bend[prev]; )
+                       : ( is_act = off_active[i]; v_y = off_y[i]; v_max = 126; rnge = 252; v_b = off_bend[prev]; );
+        is_act ? (
+          prev >= 0 ? (
+            sx1 = g2_x + ((prev - 21) / 87) * g2_w; sx2 = g2_x + ((i - 21) / 87) * g2_w;
+            prev_y = edit_mode == 0 ? dw_y[prev] : off_y[prev];
+            sy1 = graph_bottom - ((prev_y + v_max) / rnge) * graph_h; sy2 = graph_bottom - ((v_y + v_max) / rnge) * graph_h;
+            mouse_x >= sx1 && mouse_x <= sx2 ? (
+              sy = sy1 + (sy2 - sy1) * ((mouse_x - sx1) / (sx2 - sx1));
+              label_hit = abs(mouse_x - (sx1+sx2)*0.5) < 28 && abs(mouse_y - ((sy1+sy2)*0.5 - 22)) < 16;
+              abs(mouse_y - sy) < 14 || label_hit ? (
+                segment_found = 1; drag_segment_left = prev; drag_segment_right = i;
+                drag_start_x = mouse_x; drag_start_y = mouse_y;
+                drag_start_left_value = prev_y; drag_start_right_value = v_y; drag_start_bend = v_b;
+              );
+            );
+          ); prev = i;
+        ); i += 1;
+      );
+      segment_found ? drag_mode = 2;
+    );
+  );
+
+  new_right_click && mouse_y >= graph_top && mouse_y <= graph_bottom ? (
+    hit = -1; i = 21; while (i <= 108) (
+      edit_mode == 0 ? (
+        dw_active[i] ? (
+          px = g2_x + ((i - 21) / 87) * g2_w; py = graph_bottom - ((dw_y[i] + 140) / 280) * graph_h;
+          abs(mouse_x - px) < 15 && abs(mouse_y - py) < 15 ? hit = i;
+        );
+      ) : (
+        off_active[i] ? (
+          px = g2_x + ((i - 21) / 87) * g2_w; py = graph_bottom - ((off_y[i] + 126) / 252) * graph_h;
+          abs(mouse_x - px) < 15 && abs(mouse_y - py) < 15 ? hit = i;
+        );
+      ); i += 1;
+    );
+    hit >= 21 ? (
+      edit_mode == 0 ? (
+        hit == 21 || hit == 108 ? (dw_y[hit] = 100;) : (dw_active[hit] = 0; dw_bend[hit] = 0;);
+        dw_dirty = 1;
+      ) : (
+        hit == 21 || hit == 108 ? (off_y[hit] = 0;) : (off_active[hit] = 0; off_bend[hit] = 0;);
+        off_dirty = 1;
+      ); slider1 = 1; selected_point = -1;
+    ) : (
+      prev = -1; i = 21; while (i <= 108) (
+        edit_mode == 0 ? ( is_act = dw_active[i]; v_y = dw_y[i]; v_max = 140; rnge = 280; )
+                       : ( is_act = off_active[i]; v_y = off_y[i]; v_max = 126; rnge = 252; );
+        is_act ? (
+          prev >= 0 ? (
+            sx1 = g2_x + ((prev - 21) / 87) * g2_w; sx2 = g2_x + ((i - 21) / 87) * g2_w;
+            prev_y = edit_mode == 0 ? dw_y[prev] : off_y[prev];
+            sy1 = graph_bottom - ((prev_y + v_max) / rnge) * graph_h; sy2 = graph_bottom - ((v_y + v_max) / rnge) * graph_h;
+            mouse_x >= sx1 && mouse_x <= sx2 ? (
+              sy = sy1 + (sy2 - sy1) * ((mouse_x - sx1) / (sx2 - sx1));
+              label_hit = abs(mouse_x - (sx1+sx2)*0.5) < 28 && abs(mouse_y - ((sy1+sy2)*0.5 - 22)) < 16;
+              abs(mouse_y - sy) < 14 || label_hit ? (
+                edit_mode == 0 ? (dw_bend[prev] = 0; dw_dirty = 1;) : (off_bend[prev] = 0; off_dirty = 1;); 
+                slider1 = 1;
+              );
+            );
+          ); prev = i;
+        ); i += 1;
+      );
+    );
+  );
+);
+
+
+/* ---------------- GESTIONE NUDGE TASTIERA ---------------- */
+char > 0 && selected_point >= 0 ? (
+  
+  selected_graph == 1 ? (
+    char == 30064 ? ( map_y[selected_point] = min(map_y[selected_point] + 1, 127); map_dirty = 1; slider1 = 1; );
+    char == 1685026670 ? ( map_y[selected_point] = max(map_y[selected_point] - 1, 1); map_dirty = 1; slider1 = 1; );
+    
+    char == 1818584692 && selected_point > 1 && selected_point < 127 && !map_active[selected_point - 1] ? (
+      map_y[selected_point - 1] = map_y[selected_point]; map_bend[selected_point - 1] = map_bend[selected_point];
+      map_active[selected_point - 1] = 1; map_active[selected_point] = 0; 
+      selected_point -= 1; map_dirty = 1; slider1 = 1;
+    );
+    char == 1919379572 && selected_point > 1 && selected_point < 127 && !map_active[selected_point + 1] ? (
+      map_y[selected_point + 1] = map_y[selected_point]; map_bend[selected_point + 1] = map_bend[selected_point];
+      map_active[selected_point + 1] = 1; map_active[selected_point] = 0; 
+      selected_point += 1; map_dirty = 1; slider1 = 1;
+    );
+  );
+
+  selected_graph == 2 ? (
+    char == 30064 ? ( dw_y[selected_point] = min(dw_y[selected_point] + 1, 140); dw_dirty = 1; slider1 = 1; );
+    char == 1685026670 ? ( dw_y[selected_point] = max(dw_y[selected_point] - 1, -140); dw_dirty = 1; slider1 = 1; );
+    
+    char == 1818584692 && selected_point > 21 && selected_point < 108 && !dw_active[selected_point - 1] ? (
+      dw_y[selected_point - 1] = dw_y[selected_point]; dw_bend[selected_point - 1] = dw_bend[selected_point];
+      dw_active[selected_point - 1] = 1; dw_active[selected_point] = 0; 
+      selected_point -= 1; dw_dirty = 1; slider1 = 1;
+    );
+    char == 1919379572 && selected_point > 21 && selected_point < 108 && !dw_active[selected_point + 1] ? (
+      dw_y[selected_point + 1] = dw_y[selected_point]; dw_bend[selected_point + 1] = dw_bend[selected_point];
+      dw_active[selected_point + 1] = 1; dw_active[selected_point] = 0; 
+      selected_point += 1; dw_dirty = 1; slider1 = 1;
+    );
+  );
+
+  selected_graph == 3 ? (
+    char == 30064 ? ( off_y[selected_point] = min(off_y[selected_point] + 1, 126); off_dirty = 1; slider1 = 1; );
+    char == 1685026670 ? ( off_y[selected_point] = max(off_y[selected_point] - 1, -126); off_dirty = 1; slider1 = 1; );
+    
+    char == 1818584692 && selected_point > 21 && selected_point < 108 && !off_active[selected_point - 1] ? (
+      off_y[selected_point - 1] = off_y[selected_point]; off_bend[selected_point - 1] = off_bend[selected_point];
+      off_active[selected_point - 1] = 1; off_active[selected_point] = 0; 
+      selected_point -= 1; off_dirty = 1; slider1 = 1;
+    );
+    char == 1919379572 && selected_point > 21 && selected_point < 108 && !off_active[selected_point + 1] ? (
+      off_y[selected_point + 1] = off_y[selected_point]; off_bend[selected_point + 1] = off_bend[selected_point];
+      off_active[selected_point + 1] = 1; off_active[selected_point] = 0; 
+      selected_point += 1; off_dirty = 1; slider1 = 1;
+    );
+  );
+);
+
+
+/* ---------------- ESECUZIONE DRAG (CON SNAP SHIFT) ---------------- */
+mouse_cap & 1 ? (
+  
+  active_graph == 1 && drag_mode == 1 ? (
+    is_shift = mouse_cap & 8;
+    raw_x = floor(((mouse_x - g1_x) / g1_w) * 126 + 0.5);
+    raw_y = floor((graph_bottom - mouse_y) * 126 / graph_h + 1.5);
+    
+    is_shift ? (
+      grid_x = floor(((mouse_x - g1_x) / g1_w) * 8 + 0.5);
+      raw_x = floor((grid_x * 126 / 8) + 0.5);
+      grid_y = floor((graph_bottom - mouse_y) / graph_h * 8 + 0.5);
+      raw_y = floor((grid_y * 126 / 8) + 1.5);
+    );
+    
+    !(mouse_cap & 4) && drag_point != 1 && drag_point != 127 ? (
+      new_x = min(max(1 + raw_x, 2), 126);
+      new_x != drag_point && !map_active[new_x] ? (
+        map_y[new_x] = map_y[drag_point]; map_bend[new_x] = map_bend[drag_point];
+        map_active[new_x] = 1; map_active[drag_point] = 0; drag_point = new_x; selected_point = new_x;
+      );
+    );
+    
+    map_y[drag_point] = min(max(raw_y, 1), 127);
+    map_dirty = 1; slider1 = 1;
+  );
+  
+  active_graph == 1 && drag_mode == 2 ? (
+    mouse_cap & 16 ? (
+      hc = (mouse_x - drag_start_x) / 150; map_bend[drag_segment_left] = min(max(drag_start_bend + hc, -1), 1);
+    ) : (
+      vs = (drag_start_y - mouse_y) * 126 / graph_h;
+      val_l = floor(drag_start_left_value + vs + 0.5);
+      val_r = floor(drag_start_right_value + vs + 0.5);
+      
+      mouse_cap & 8 ? (
+        val_l = floor(floor((val_l - 1) * 8 / 126 + 0.5) * 126 / 8 + 1.5);
+        val_r = floor(floor((val_r - 1) * 8 / 126 + 0.5) * 126 / 8 + 1.5);
+      );
+      map_y[drag_segment_left] = min(max(val_l, 1), 127);
+      map_y[drag_segment_right] = min(max(val_r, 1), 127);
+    );
+    map_dirty = 1; slider1 = 1;
+  );
+
+  active_graph == 2 && drag_mode == 1 ? (
+    !(mouse_cap & 4) && drag_point != 21 && drag_point != 108 ? (
+      new_x = floor(21 + ((mouse_x - g2_x) / g2_w) * 87 + 0.5); new_x = min(max(new_x, 22), 107);
+      edit_mode == 0 ? (
+        new_x != drag_point && !dw_active[new_x] ? (
+          dw_y[new_x] = dw_y[drag_point]; dw_bend[new_x] = dw_bend[drag_point];
+          dw_active[new_x] = 1; dw_active[drag_point] = 0; drag_point = new_x; selected_point = new_x;
+        );
+      ) : (
+        new_x != drag_point && !off_active[new_x] ? (
+          off_y[new_x] = off_y[drag_point]; off_bend[new_x] = off_bend[drag_point];
+          off_active[new_x] = 1; off_active[drag_point] = 0; drag_point = new_x; selected_point = new_x;
+        );
+      );
+    );
+
+    edit_mode == 0 ? (
+      raw_y = floor((graph_bottom - mouse_y) * 280 / graph_h - 140 + 0.5);
+      mouse_cap & 8 ? raw_y = floor(raw_y / 20 + 0.5) * 20;
+      dw_y[drag_point] = min(max(raw_y, -140), 140);
+      dw_dirty = 1; 
+    ) : (
+      raw_y = floor((graph_bottom - mouse_y) * 252 / graph_h - 126 + 0.5);
+      mouse_cap & 8 ? raw_y = floor(raw_y / 18 + 0.5) * 18;
+      off_y[drag_point] = min(max(raw_y, -126), 126);
+      off_dirty = 1;
+    ); 
+    slider1 = 1;
+  );
+  
+  active_graph == 2 && drag_mode == 2 ? (
+    mouse_cap & 16 ? (
+      hc = (mouse_x - drag_start_x) / 150; 
+      edit_mode == 0 ? ( dw_bend[drag_segment_left] = min(max(drag_start_bend + hc, -1), 1); ) 
+                     : ( off_bend[drag_segment_left] = min(max(drag_start_bend + hc, -1), 1); );
+    ) : (
+      edit_mode == 0 ? (
+        vs = (drag_start_y - mouse_y) * 280 / graph_h;
+        val_l = floor(drag_start_left_value + vs + 0.5);
+        val_r = floor(drag_start_right_value + vs + 0.5);
+        mouse_cap & 8 ? (
+          val_l = floor(val_l / 20 + 0.5) * 20;
+          val_r = floor(val_r / 20 + 0.5) * 20;
+        );
+        dw_y[drag_segment_left] = min(max(val_l, -140), 140);
+        dw_y[drag_segment_right] = min(max(val_r, -140), 140);
+      ) : (
+        vs = (drag_start_y - mouse_y) * 252 / graph_h;
+        val_l = floor(drag_start_left_value + vs + 0.5);
+        val_r = floor(drag_start_right_value + vs + 0.5);
+        mouse_cap & 8 ? (
+          val_l = floor(val_l / 18 + 0.5) * 18;
+          val_r = floor(val_r / 18 + 0.5) * 18;
+        );
+        off_y[drag_segment_left] = min(max(val_l, -126), 126);
+        off_y[drag_segment_right] = min(max(val_r, -126), 126);
+      );
+    );
+    edit_mode == 0 ? (dw_dirty = 1;) : (off_dirty = 1;); slider1 = 1;
+  );
+
+  /* Gestione Drag View Mode (Impostazione secondi) */
+  drag_mode == 3 ? (
+    delta_y = drag_start_y - mouse_y;
+    new_view_mode = floor(drag_start_view_mode + (delta_y / 10) + 0.5);
+    view_mode = min(max(new_view_mode, 0), 14);
+    slider1 = 1;
+  );
+
+) : (
+  drag_mode = 0; drag_point = -1; drag_segment_left = -1; drag_segment_right = -1; active_graph = 0;
+);
+last_mouse_cap = mouse_cap;
+
+
+/* ---------------- FORZATURA RICALCOLO PRE-DISEGNO ---------------- */
+map_dirty ? update_map_curves();
+dw_dirty ? update_dw_curves();
+off_dirty ? update_off_curves();
+
+
+/* ---------------- RENDERING GRAFICO (Z-Index Ordinato) ---------------- */
+
+/* Ottimizzazione Font - Slot ridotti per risparmiare memoria GFX */
+gfx_setfont(1, "Arial", 16);      /* Istruzioni Quick Guide */
+gfx_setfont(2, "Arial", 17);      /* Titoli piccoli, Bend numbers, UI Graph 1 */
+gfx_setfont(3, "Arial", 19);      /* Valori X/Y, Note, Hz, Numeri Graph 2, MIDI Log */
+gfx_setfont(4, "Arial", 24, 'bi'); /* Titolo principale MIDI Velocity EQ (for Gabri) */
+gfx_setfont(5, "Times New Roman", 20, 'i'); /* Dedica (Corsivo elegante) */
+
+gfx_set(0.055, 0.055, 0.065, 1); gfx_rect(0, 0, gfx_w, gfx_h, 1);
+
+/* --- GRAPH 1 --- */
+gfx_setfont(2, "Arial", 17); gfx_set(1.0, 0.7, 0.2, 1);
+gfx_x = g1_x; gfx_y = 15; gfx_drawstr("Velocity Curve");
+gfx_set(0.10, 0.10, 0.12, 1); gfx_rect(g1_x, graph_top, g1_w, graph_h, 1);
+
+gfx_set(0.22, 0.22, 0.25, 1);
+i = 0; while (i <= 8) (
+  gy = graph_top + i * graph_h / 8; gfx_line(g1_x, gy, g1_x + g1_w, gy, 1);
+  gx = g1_x + i * g1_w / 8; gfx_line(gx, graph_top, gx, graph_bottom, 1); i += 1;
+);
+gfx_set(0.55, 0.55, 0.58, 1); gfx_line(g1_x, graph_bottom, g1_x + g1_w, graph_top, 2);
+
+/* --- RENDER FEEDBACK COLUMNS GRAPH 1 --- */
+i = 1; while (i <= 127) (
+  fb1_alpha[i] > 0 ? (
+    col_x = g1_x + ((i - 1) / 126) * g1_w;
+    col_h = ((map_curve[i] - 1) / 126) * graph_h; 
+    col_y = graph_bottom - col_h;
+    
+    fb1_modified[i] ? gfx_set(0.2, 0.7, 0.4, fb1_alpha[i] * 0.6) 
+                    : gfx_set(0.5, 0.5, 0.5, fb1_alpha[i] * 0.4);
+                    
+    gfx_rect(col_x - 1, col_y, 2, col_h, 1);
+  );
+  i += 1;
+);;
+
+gfx_setfont(3, "Arial", 19); gfx_set(0.78, 0.78, 0.82, 1);
+i = 0; while (i <= 8) (
+  /* Asse X: da sinistra a destra (i va da 0 a 8) */
+  vx = g1_x + i * g1_w / 8; v_in = 1 + floor(i * 126 / 8 + 0.5);
+  sprintf(#v_str, "%d", v_in); gfx_measurestr(#v_str, tw, th);
+  gfx_x = vx - tw * 0.5; gfx_y = graph_bottom + 8; gfx_drawstr(#v_str); 
+  
+  /* Asse Y: dall'alto al basso. Inverto l'indice (8 - i) per usare la stessa formula di v_in */
+  vy = graph_top + i * graph_h / 8; v_out = 1 + floor((8 - i) * 126 / 8 + 0.5);
+  sprintf(#v_str, "%d", v_out); gfx_measurestr(#v_str, tw, th);
+  gfx_x = g1_x - tw - 8; gfx_y = vy - th * 0.5; gfx_drawstr(#v_str); 
+  
+  i += 1;
+);
+
+/* G1: Linee */
+gfx_set(1.0, 0.7, 0.2, 1);
+curve_x1 = g1_x; curve_y1 = graph_bottom - ((map_curve[1] - 1) / 126) * graph_h;
+i = 2; while (i <= 127) (
+  curve_x2 = g1_x + ((i - 1) / 126) * g1_w; curve_y2 = graph_bottom - ((map_curve[i] - 1) / 126) * graph_h;
+  gfx_line(curve_x1, curve_y1, curve_x2, curve_y2, 2);
+  curve_x1 = curve_x2; curve_y1 = curve_y2; i += 1;
+);
+
+/* G1: Cerchi e Nudge */
+i = 1; while (i <= 127) (
+  map_active[i] ? (
+    px = g1_x + ((i - 1) / 126) * g1_w; py = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+    selected_point == i && selected_graph == 1 ? ( gfx_set(1.0, 1.0, 1.0, 0.5); gfx_circle(px, py, 15, 0); );
+    gfx_set(1.0, 0.75, 0.25, 0.35); gfx_circle(px, py, 10, 1);
+    gfx_set(1.0, 0.82, 0.35, 1); gfx_circle(px, py, 5, 1);
+  ); i += 1;
+);
+
+/* G1: Testi */
+gfx_setfont(3, "Arial", 19); gfx_set(1.0, 0.9, 0.5, 1);
+i = 1; while (i <= 127) (
+  map_active[i] ? (
+    
+    /* INTERRUTTORE VISIBILITÀ: Di base mostriamo il testo (1) */
+    show_text = 1;
+    
+    /* Ma lo nascondiamo (0) se i punti estremi sono sui loro valori di default */
+    (i == 1 && map_y[i] == 1) ? show_text = 0;
+    (i == 127 && map_y[i] == 127) ? show_text = 0;
+    
+    show_text ? (
+      px = g1_x + ((i - 1) / 126) * g1_w; py = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+      
+      /* Se è il punto iniziale (1) o finale (127), mostra solo la Y. Altrimenti mostra (X,Y) */
+      i == 1 || i == 127 ? (
+        sprintf(#lbl, "%d", map_y[i]);
+      ) : (
+        sprintf(#lbl, "(%d,%d)", i, map_y[i]);
+      );
+      
+      gfx_measurestr(#lbl, lw, lh);
+      (px + 8 + lw > g1_x + g1_w) ? (gfx_x = px - lw - 14;) : (gfx_x = px + 8;);
+      gfx_y = py + 10; 
+      gfx_drawstr(#lbl);
+    );
+  ); i += 1;
+);
+
+gfx_setfont(2, "Arial", 17); gfx_set(0.95, 0.88, 0.55, 1);
+previous_point = -1; i = 1;
+while (i <= 127) (
+  map_active[i] ? (
+    previous_point >= 0 ? (
+      bx1 = g1_x + ((previous_point - 1) / 126) * g1_w; bx2 = g1_x + ((i - 1) / 126) * g1_w;
+      by1 = graph_bottom - ((map_y[previous_point] - 1) / 126) * graph_h; by2 = graph_bottom - ((map_y[i] - 1) / 126) * graph_h;
+      bend_slope = map_y[i] - map_y[previous_point]; bend_slope_sign = bend_slope > 0 ? 1 : (bend_slope < 0 ? -1 : 0);
+      displayed_bend = floor(-(bend_slope_sign != 0 ? map_bend[previous_point] * bend_slope_sign : map_bend[previous_point]) * 100 + 0.5);
+      
+      (bx2 - bx1) > 25 && abs(displayed_bend) > 0 ? (
+        gfx_x = (bx1+bx2)*0.5 - 10; gfx_y = (by1+by2)*0.5 - 18;
+        displayed_bend > 0 ? gfx_drawstr("+"); gfx_drawnumber(displayed_bend, 0);
+      );
+    ); previous_point = i;
+  ); i += 1;
+);
+
+/* Istruzioni Quick Guide a due colonne */
+gfx_setfont(1, "Arial", 16); 
+gfx_set(0.6, 0.6, 0.65, 1);
+line_h = 18;
+col1_x = g1_x; col2_x = g1_x + 225;
+
+gfx_x = col1_x; gfx_y = bar_y; 
+gfx_drawstr("Double-click grid: Add custom point");
+gfx_x = col1_x; gfx_y += line_h; 
+gfx_drawstr("Single-click piano: Add custom point");
+gfx_x = col1_x; gfx_y += line_h; 
+gfx_drawstr("Drag point: Reposition freely");
+gfx_x = col1_x; gfx_y += line_h; 
+gfx_drawstr("Arrow keys: Fine-tuning nudge");
+
+gfx_x = col2_x; gfx_y = bar_y; 
+gfx_drawstr("Shift+drag: Snap to grid");
+gfx_x = col2_x; gfx_y += line_h; 
+gfx_drawstr("Ctrl+drag: Lock horizontal axis");
+gfx_x = col2_x; gfx_y += line_h; 
+gfx_drawstr("Alt+drag segment: Adjust curvature");
+gfx_x = col2_x; gfx_y += line_h; 
+gfx_drawstr("Right-click point/curve: Delete/Reset");
+
+
+/* --- RENDER MIDI LOG DISPLAY --- */
+/* Allineamento Y identico alle scritte Note e Hz del Grafico 2 */
+log_x = g1_x; log_w = g1_w; 
+log_y1 = keyboard_bottom + 8;
+log_y2 = keyboard_bottom + 28;
+
+gfx_setfont(3, "Arial", 19);
+function draw_log_event(n, vin, vout, y_pos, alpha) (
+  n >= 0 ? (
+    pc = n % 12; pc == 0 ? strcpy(#log_n, "C") : pc == 1 ? strcpy(#log_n, "C#") : pc == 2 ? strcpy(#log_n, "D") : pc == 3 ? strcpy(#log_n, "D#") : pc == 4 ? strcpy(#log_n, "E") : pc == 5 ? strcpy(#log_n, "F") : pc == 6 ? strcpy(#log_n, "F#") : pc == 7 ? strcpy(#log_n, "G") : pc == 8 ? strcpy(#log_n, "G#") : pc == 9 ? strcpy(#log_n, "A") : pc == 10 ? strcpy(#log_n, "A#") : strcpy(#log_n, "B");
+    oct = floor(n / 12) - 1;
+    
+    /* Vout colorato di verde se modificato, altrimenti grigio chiaro */
+    vin != vout ? gfx_set(0.3, 0.8, 0.5, alpha) : gfx_set(0.7, 0.7, 0.7, alpha);
+    sprintf(#log_str, "IN: %s%d (%d)   Vel: %d   >>   OUT: %d", #log_n, oct, n, vin, vout);
+    
+    gfx_measurestr(#log_str, lw, lh);
+    gfx_x = log_x + (log_w - lw)/2; gfx_y = y_pos;
+    gfx_drawstr(#log_str);
+  );
+);
+
+log_n1 >= 0 ? (
+  draw_log_event(log_n2, log_vi2, log_vo2, log_y1, 0.5);
+  draw_log_event(log_n1, log_vi1, log_vo1, log_y2, 1.0);
+) : (
+  gfx_set(0.7, 0.7, 0.7, 1);
+  sprintf(#log_str, "MIDI EVENT LOG IDLE...");
+  gfx_measurestr(#log_str, lw, lh);
+  /* Centrato verticalmente tra le due Y */
+  gfx_x = log_x + (log_w - lw)/2; gfx_y = (log_y1 + log_y2) / 2;
+  gfx_drawstr(#log_str);
+);
+
+
+/* --- DRAW GRAPH 2 UI BUTTONS E TITOLO --- */
+gfx_set(0.2, 0.2, 0.2, 1); gfx_rect(btn_edit_x, btn_edit_y, btn_edit_w, btn_edit_h, 1);
+edit_mode == 0 ? gfx_set(1.0, 0.7, 0.2, 1) : gfx_set(0.2, 0.8, 0.95, 1);
+gfx_rect(btn_edit_x, btn_edit_y, btn_edit_w, btn_edit_h, 0);
+gfx_setfont(2, "Arial", 17);
+gfx_measurestr(edit_mode == 0 ? "Curve EQ" : "OFFSET", tw, th);
+gfx_x = btn_edit_x + (btn_edit_w - tw)/2; gfx_y = btn_edit_y + (btn_edit_h - th)/2;
+gfx_drawstr(edit_mode == 0 ? "Curve EQ" : "OFFSET");
+
+gfx_set(0.2, 0.2, 0.2, 1); gfx_rect(btn_rout_x, btn_rout_y, btn_rout_w, btn_rout_h, 1);
+gfx_set(0.2, 0.8, 0.95, 1); gfx_rect(btn_rout_x, btn_rout_y, btn_rout_w, btn_rout_h, 0);
+gfx_measurestr(routing_mode == 0 ? "Offset: PRE-Curve" : "Offset: POST-Curve", tw, th);
+gfx_x = btn_rout_x + (btn_rout_w - tw)/2; gfx_y = btn_rout_y + (btn_rout_h - th)/2;
+gfx_drawstr(routing_mode == 0 ? "Offset: PRE-Curve" : "Offset: POST-Curve");
+
+gfx_setfont(4, "Arial", 24, 'bi');
+gfx_set(0.9, 0.9, 0.9, 1);
+sprintf(#title_str, "MIDI Velocity EQ (for Gabri)");
+gfx_measurestr(#title_str, title_w, title_h);
+/* Rimettiamo il titolo tutto a destra */
+gfx_x = g2_x + g2_w - title_w; 
+gfx_y = btn_edit_y + (btn_edit_h - title_h) / 2;
+gfx_drawstr(#title_str);
+
+/* --- DRAW VIEW MODE BUTTON --- */
+gfx_set(0.2, 0.2, 0.2, 1); gfx_rect(btn_view_x, btn_view_y, btn_view_w, btn_view_h, 1); /* Sfondo grigio scuro */
+
+/* Colore bordo e testo: sempre verde "mamma" per coerenza con gli altri tasti */
+gfx_set(0.3, 0.8, 0.5, 1);
+gfx_rect(btn_view_x, btn_view_y, btn_view_w, btn_view_h, 0); /* Profilo tasto */
+
+gfx_setfont(2, "Arial", 17);
+view_mode == 0 ? strcpy(#view_str, "Realtime") :
+view_mode == 14 ? strcpy(#view_str, "Peak Hold") :
+sprintf(#view_str, "Hold %ds", view_mode);
+
+gfx_measurestr(#view_str, tw, th);
+gfx_x = btn_view_x + (btn_view_w - tw)/2; /* Testo perfettamente centrato nel bottone */
+gfx_y = btn_view_y + (btn_view_h - th)/2;
+gfx_drawstr(#view_str);
+
+
+/* --- GRAPH 2 --- */
+gfx_set(0.10, 0.10, 0.12, 1); gfx_rect(g2_x, graph_top, g2_w, graph_h, 1);
+gfx_set(0.22, 0.22, 0.25, 1);
+
+i = 0; while (i <= 14) ( gy = graph_top + i * graph_h / 14; gfx_line(g2_x, gy, g2_x + g2_w, gy, 1); i += 1; );
+
+gfx_setfont(2, "Arial", 17); gfx_set(0.78, 0.78, 0.82, 1);
+i = 0; while (i <= 14) (
+  gy = graph_top + i * graph_h / 14;
+  edit_mode == 0 ? (
+    val = 140 - i * 20;
+    sprintf(#lbl, "%d%%", val);
+    val > 0 ? sprintf(#lbl, "+%d%%", val);
+  ) : (
+    val = 126 - i * 18;
+    sprintf(#lbl, "%d", val);
+    val > 0 ? sprintf(#lbl, "+%d", val);
+  );
+  gfx_measurestr(#lbl, tw, th);
+  gfx_x = g2_x - tw - 8; gfx_y = gy - th * 0.5; 
+  gfx_drawstr(#lbl);
+  i += 1;
+);
+
+gfx_set(0.55, 0.55, 0.58, 0.5); gfx_line(g2_x, graph_top + graph_h*0.5, g2_x + g2_w, graph_top + graph_h*0.5, 2);
+
+/* --- RENDER FEEDBACK COLUMNS (ANALIZZATORE DI SPETTRO) --- */
+key_w_g2 = g2_w / 87;
+i = 21; while (i <= 108) (
+    fb_alpha[i] > 0 ? (
+        col_h = (fb_out_vel[i] / 127) * graph_h;
+        col_x = g2_x + ((i - 21) / 87) * g2_w - (key_w_g2 * 0.5) + 1;
+        col_w = key_w_g2 - 1.5;
+        col_y = graph_bottom - col_h;
+        
+        fb_modified[i] ? gfx_set(0.2, 0.7, 0.4, fb_alpha[i] * 0.5) 
+                       : gfx_set(0.5, 0.5, 0.5, fb_alpha[i] * 0.4);
+                       
+        gfx_rect(col_x, col_y, col_w, col_h, 1);
+    );
+    i += 1;
+);
+
+function draw_g2_lines(is_dw, alpha) (
+  is_dw ? gfx_set(1.0, 0.7, 0.2, alpha) : gfx_set(0.2, 0.8, 0.95, alpha);
+  curve_x1 = g2_x; curve_y1 = graph_bottom - (is_dw ? (dw_curve[21] + 140)/280 : (off_curve[21] + 126)/252) * graph_h;
+  i = 22; while (i <= 108) (
+    curve_x2 = g2_x + ((i - 21) / 87) * g2_w; 
+    curve_y2 = graph_bottom - (is_dw ? (dw_curve[i] + 140)/280 : (off_curve[i] + 126)/252) * graph_h;
+    gfx_line(curve_x1, curve_y1, curve_x2, curve_y2, 2);
+    curve_x1 = curve_x2; curve_y1 = curve_y2; i += 1;
+  );
+);
+
+function draw_g2_points_and_text(is_dw, alpha) (
+  i = 21; while (i <= 108) (
+    (is_dw ? dw_active[i] : off_active[i]) ? (
+      px = g2_x + ((i - 21) / 87) * g2_w; py = graph_bottom - (is_dw ? (dw_y[i] + 140)/280 : (off_y[i] + 126)/252) * graph_h;
+      
+      selected_point == i && selected_graph == (is_dw ? 2 : 3) && alpha == 1.0 ? ( gfx_set(1.0, 1.0, 1.0, 0.5); gfx_circle(px, py, 15, 0); );
+      
+      is_dw ? gfx_set(1.0, 0.75, 0.25, alpha*0.35) : gfx_set(0.1, 0.5, 0.7, alpha*0.35); gfx_circle(px, py, 10, 1);
+      is_dw ? gfx_set(1.0, 0.82, 0.35, alpha) : gfx_set(0.2, 0.8, 0.95, alpha); gfx_circle(px, py, 5, 1);
+      
+      alpha == 1.0 ? (
+        gfx_setfont(3, "Arial", 19); is_dw ? gfx_set(1.0, 0.85, 0.25, 1) : gfx_set(0.2, 0.9, 0.95, 1);
+        pc = i % 12; pc == 0 ? strcpy(#n_str, "C") : pc == 1 ? strcpy(#n_str, "C#") : pc == 2 ? strcpy(#n_str, "D") : pc == 3 ? strcpy(#n_str, "D#") : pc == 4 ? strcpy(#n_str, "E") : pc == 5 ? strcpy(#n_str, "F") : pc == 6 ? strcpy(#n_str, "F#") : pc == 7 ? strcpy(#n_str, "G") : pc == 8 ? strcpy(#n_str, "G#") : pc == 9 ? strcpy(#n_str, "A") : pc == 10 ? strcpy(#n_str, "A#") : strcpy(#n_str, "B");
+        oct = floor(i / 12) - 1; val = is_dw ? dw_y[i] : off_y[i];
+        
+        /* Se è il punto iniziale (21) o finale (108), nasconde le note tra parentesi */
+        i == 21 || i == 108 ? (
+          is_dw ? ( val > 0 ? sprintf(#lbl, "+%d%%", val) : sprintf(#lbl, "%d%%", val); ) 
+                : ( val > 0 ? sprintf(#lbl, "+%d", val) : sprintf(#lbl, "%d", val); );
+        ) : (
+          is_dw ? ( val > 0 ? sprintf(#lbl, "(%s%d,%d) +%d%%", #n_str, oct, i, val) : sprintf(#lbl, "(%s%d,%d) %d%%", #n_str, oct, i, val); ) 
+                : ( val > 0 ? sprintf(#lbl, "(%s%d,%d) +%d", #n_str, oct, i, val) : sprintf(#lbl, "(%s%d,%d) %d", #n_str, oct, i, val); );
+        );
+        
+        gfx_measurestr(#lbl, lw, lh);
+        (px + 8 + lw > g2_x + g2_w) ? (gfx_x = px - lw - 14;) : (gfx_x = px + 8;); 
+        gfx_y = py + 10; 
+        gfx_drawstr(#lbl);
+      );
+    ); i += 1;
+  );
+  
+  alpha == 1.0 ? (
+    gfx_setfont(2, "Arial", 17); is_dw ? gfx_set(0.95, 0.85, 0.25, 1) : gfx_set(0.4, 0.85, 0.95, 1);
+    previous_point = -1; i_b = 21;
+    while (i_b <= 108) (
+      (is_dw ? dw_active[i_b] : off_active[i_b]) ? (
+        previous_point >= 0 ? (
+          bx1 = g2_x + ((previous_point - 21) / 87) * g2_w; bx2 = g2_x + ((i_b - 21) / 87) * g2_w;
+          prev_val = is_dw ? dw_y[previous_point] : off_y[previous_point]; curr_val = is_dw ? dw_y[i_b] : off_y[i_b];
+          by1 = graph_bottom - (is_dw ? (prev_val + 140)/280 : (prev_val + 126)/252) * graph_h; by2 = graph_bottom - (is_dw ? (curr_val + 140)/280 : (curr_val + 126)/252) * graph_h;
+          
+          bend_val = is_dw ? dw_bend[previous_point] : off_bend[previous_point];
+          bend_slope = curr_val - prev_val; bend_slope_sign = bend_slope > 0 ? 1 : (bend_slope < 0 ? -1 : 0);
+          displayed_bend = floor(-(bend_slope_sign != 0 ? bend_val * bend_slope_sign : bend_val) * 100 + 0.5);
+          
+          (bx2 - bx1) > 25 && abs(displayed_bend) > 0 ? (
+            gfx_x = (bx1+bx2)*0.5 - 10; gfx_y = (by1+by2)*0.5 - 18;
+            displayed_bend > 0 ? gfx_drawstr("+"); gfx_drawnumber(displayed_bend, 0);
+          );
+        ); previous_point = i_b;
+      ); i_b += 1;
+    );
+  );
+);
+
+edit_mode == 0 ? ( draw_g2_lines(0, 0.25); draw_g2_lines(1, 1.0); draw_g2_points_and_text(0, 0.25); draw_g2_points_and_text(1, 1.0); )
+               : ( draw_g2_lines(1, 0.25); draw_g2_lines(0, 1.0); draw_g2_points_and_text(1, 0.25); draw_g2_points_and_text(0, 1.0); );
+
+/* Tastiera G2 Lineare e Testi (Note e Hz) */
+key_w = g2_w / 87; n = 21; 
+while (n <= 108) (
+  key_x = g2_x + ((n - 21) / 87) * g2_w - (key_w * 0.5);
+  is_white_key[n] ? (
+    gfx_set(0.85, 0.85, 0.85, 1); gfx_rect(key_x, keyboard_top, key_w, keyboard_bottom - keyboard_top, 1);
+    gfx_set(0.6, 0.6, 0.6, 1); gfx_rect(key_x, keyboard_top, key_w, keyboard_bottom - keyboard_top, 0); 
+  ) : (
+    gfx_set(0.15, 0.15, 0.18, 1); gfx_rect(key_x, keyboard_top, key_w, keyboard_bottom - keyboard_top, 1);
+    gfx_set(0.05, 0.05, 0.05, 1); gfx_rect(key_x, keyboard_top, key_w, keyboard_bottom - keyboard_top, 0); 
+  );
+  n += 1;
+);
+
+n = 24; while (n <= 108) (
+  center_x = g2_x + ((n - 21) / 87) * g2_w;
+  
+  /* 1. Preparazione stringhe Riga 1 */
+  octave = floor(n / 12) - 1; 
+  sprintf(#c_str, "C%d", octave);
+  sprintf(#midi_str, ",%d", n);
+  gfx_measurestr(#c_str, w_C, h_C);
+  
+  /* 2. Preparazione stringhe Riga 2 */
+  freq = note_freq[n]; 
+  sprintf(#freq_str, "%d", freq);
+  strcpy(#hz_str, " Hz");
+  gfx_measurestr(#freq_str, w_freq, h_freq);
+  
+  /* 3. IL TRUCCO GEOMETRICO: Centriamo la virgola! */
+  gfx_measurestr(",", w_comma, h_comma);
+  split_x = center_x - (w_comma / 2);
+  
+  /* Manteniamo solo la sicurezza a sinistra per non tagliare il primo C1 */
+  gfx_measurestr("127", tw127, th127);
+  left_margin = g1_x - tw127 - 8;
+  max_left_w = max(w_C, w_freq);
+  split_x - max_left_w < left_margin ? split_x = left_margin + max_left_w;
+  
+  /* 4. Render Riga 1 */
+  gfx_set(0.7, 0.7, 0.7, 1); 
+  gfx_x = split_x - w_C; gfx_y = keyboard_bottom + 8; gfx_drawstr(#c_str);
+  gfx_x = split_x; gfx_y = keyboard_bottom + 8; gfx_drawstr(#midi_str);
+  
+  /* 5. Render Riga 2 */
+  gfx_set(0.5, 0.5, 0.5, 1);
+  gfx_x = split_x - w_freq; gfx_y = keyboard_bottom + 28; gfx_drawstr(#freq_str);
+  gfx_x = split_x; gfx_y = keyboard_bottom + 28; gfx_drawstr(#hz_str);
+  
+  n += 12;
+);
+
+/* --- DEDICA FILIGRANATA --- */
+gfx_setfont(5, "Times New Roman", 20, 'i');
+sprintf(#dedica, "A mia mamma Gabriella per il suo 83° compleanno");
+gfx_measurestr(#dedica, ded_w, ded_h);
+
+/* Lo centriamo orizzontalmente nel Grafico 2, e verticalmente nello spazio vuoto */
+ded_x = g2_x + (g2_w - ded_w) / 2;
+ded_y = graph_bottom + ((keyboard_top - graph_bottom) - ded_h) / 2;
+
+/* Colore grigio chiaro, con opacità al 35% (0.35) per un perfetto effetto filigrana */
+gfx_set(0.96, 0.96, 1.0, 0.5);
+gfx_x = ded_x; gfx_y = ded_y; gfx_drawstr(#dedica);
+
+@serialize
+file_var(0, state_version); file_var(0, slider1);
+file_mem(0, map_y, 128); file_mem(0, map_active, 128); file_mem(0, map_bend, 128);
+file_mem(0, dw_y, 128); file_mem(0, dw_active, 128); file_mem(0, dw_bend, 128);
+file_mem(0, off_y, 128); file_mem(0, off_active, 128); file_mem(0, off_bend, 128);
+file_var(0, edit_mode); file_var(0, routing_mode); file_var(0, view_mode);
+map_dirty = 1; dw_dirty = 1; off_dirty = 1;
