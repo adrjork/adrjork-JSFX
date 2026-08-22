@@ -1,5 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" commit="3a5c126287b80a2eb12e0d01a28ad58dd14bc3a2" name="adrjork-JSFX">
+<index version="1" commit="76af6c252410fdc16b3d90cf66bf71e2102b034f" name="adrjork-JSFX">
+  <category name="MIDI">
+    <reapack name="MIDI Velocity EQ (for Gabri).jsfx" type="effect" desc="MIDI Velocity EQ (for Gabri)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 {\b MIDI VELOCITY EQ (FOR GABRI)}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 A sort of MIDI EQ that selectively applies percentages of a custom velocity curve.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 {\i Dedicato a mia mamma Gabriella per il suo 83\u176 ? compleanno.}\par}
+{\pard \qc \f0 \sa180 \li0 \fi0 \emdash\emdash\emdash\emdash\emdash\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Developed through vibe-coding (AI-assisted).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License MIT\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Copyright (c) 2026 Adriano Castaldini\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b Links:} Forum https://forum.cockos.com/showthread.php?t=310660 Video https://www.youtube.com/watch?v=6H16FIS6xws\par}
+}
+]]></description>
+      </metadata>
+      <version name="0.26.08.24" author="Adriano Castaldini" time="2026-08-22T05:13:04Z">
+        <changelog><![CDATA[0.26.08.24
+  + Color feedback in velocity spectrum analyzer.
+  + UI refinements
+0.26.08.23
+  + Metadata refinements.
+0.26.08.22
+  + Changelog fixes.
+0.26.08.21
+  + About section in metadata.
+0.26.08.20
+  + MIDI velocity spectrum analyzer.
+0.26.08.19
+  + UI refinements.
+0.26.08.09
+  + Beta release.]]></changelog>
+        <source>https://github.com/adrjork/adrjork-JSFX/raw/76af6c252410fdc16b3d90cf66bf71e2102b034f/MIDI/MIDI%20Velocity%20EQ%20(for%20Gabri).jsfx</source>
+      </version>
+    </reapack>
+  </category>
   <metadata>
     <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
